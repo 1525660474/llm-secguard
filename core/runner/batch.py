@@ -10,6 +10,8 @@ import asyncio
 import httpx
 
 from core.db import get_db
+from core.guardrail.input_guard import check_input
+from core.guardrail.output_guard import check_output
 from core.judge.llm_judge import judge_async
 from core.judge.rule_judge import judge
 from core.mutators import apply_mutation
@@ -45,6 +47,16 @@ async def _run_one(client, sem, payload, model, mutation, guardrail_on, retry=1)
             "category": payload["category"],
         }
 
+        if guardrail_on:
+            input_check = check_input(user_text)
+            if input_check.blocked:
+                reason = "输入防护拦截: " + "；".join(input_check.reasons)
+                result["response"] = "[已拦截] " + "；".join(input_check.reasons)
+                result["success"] = 0
+                result["judge_method"] = "guardrail"
+                result["judge_reason"] = reason
+                return result
+
         for attempt in range(retry + 1):
             try:
                 response, latency_ms = await chat_completion_async(
@@ -53,7 +65,15 @@ async def _run_one(client, sem, payload, model, mutation, guardrail_on, retry=1)
                 result["response"] = response
                 result["latency_ms"] = latency_ms
 
-                success, reason = judge(payload["judge"], payload["target"], response, canary)
+                judge_text = response
+                out_reason = ""
+                if guardrail_on:
+                    output_check = check_output(response)
+                    if output_check.changed:
+                        judge_text = output_check.text
+                        out_reason = "；".join(output_check.reasons)
+
+                success, reason = judge(payload["judge"], payload["target"], judge_text, canary)
                 if success is None and payload["judge"] == "llm":
                     success, reason = await judge_async(
                         client,
@@ -61,9 +81,11 @@ async def _run_one(client, sem, payload, model, mutation, guardrail_on, retry=1)
                         api_key,
                         model["model_id"],
                         payload["text"],
-                        response,
+                        judge_text,
                         canary,
                     )
+                if out_reason:
+                    reason = f"[输出防护: {out_reason}] {reason}"
                 result["success"] = success
                 result["judge_method"] = payload["judge"]
                 result["judge_reason"] = reason

@@ -21,6 +21,10 @@
 - [x] S9 并发执行器（asyncio 限流 + 重试）
 - [x] S10 LLM-as-judge（编码/分片类载荷判定）
 - [x] S11 批量评测（685 次真实运行）
+- [x] S12 防护代理（FastAPI，OpenAI 兼容接口）
+- [x] S13 输入防护（规则 + 编码归一化 + 载荷相似度）
+- [x] S14 输出防护（验证码拦截 + PII 脱敏）
+- [x] S15 对比实验（防护前后 ASR + 误报率 + 泛化测试）
 
 ## 测试数据（W2 基线，DeepSeek-V3）
 
@@ -54,6 +58,32 @@
 - 编码混淆对泄露类载荷有小幅提升，但对 UO 类反而下降（模型解码后更谨慎）
 - 人工抽检与统计口径：`scripts/export_runs.py` / `scripts/stats.py`
 
+## 防护对比实验（W3）
+
+防护代理对同一批载荷的拦截效果（DeepSeek-V3）：
+
+| 实验组 | 攻破/总数 | ASR |
+|---|---|---|
+| 基线（无防护，原始载荷） | 16/137 | 11.7% |
+| 基线（无防护，角色扮演变异） | 21/137 | 15.3% |
+| **开启防护（原始载荷）** | **0/137** | **0%** |
+| **开启防护（角色扮演变异）** | **0/137** | **0%** |
+| 正常业务问题 50 条 | 误拦截 0 条 | 误报率 **0%** |
+
+> 274 次防护运行全部在输入侧拦截（规则命中 / 编码还原 / 相似度匹配），未到达模型。
+
+### 诚实边界：泛化测试
+
+签名式防护（规则 + 相似度）对已知载荷 100% 拦截，但 10 条手写改写攻击 **10/10 全部绕过**。
+下一步迭代方向：语义向量检测（sentence-transformers）+ 阈值调优，用同一套泛化测试集量化提升。
+
+### 防护代理用法
+
+```powershell
+venv\Scripts\python -m uvicorn proxy.app:app --port 8000
+# 客户端 base_url 指向 http://127.0.0.1:8000/v1 即可透明启用防护
+```
+
 ## 快速开始
 
 ```powershell
@@ -76,10 +106,22 @@ venv\Scripts\python scripts\import_payloads.py
 venv\Scripts\python scripts\run_once.py --limit 10                              # 单链路（顺序）
 venv\Scripts\python scripts\run_batch.py --limit 50                             # 批量并发
 venv\Scripts\python scripts\run_batch.py --mutation roleplay --limit 50         # 指定变异策略
+venv\Scripts\python scripts\run_batch.py --guardrail --limit 50                 # 开启防护对比
 venv\Scripts\python scripts\stats.py                                            # ASR 统计
 venv\Scripts\python scripts\export_runs.py --limit 50                           # 导出抽检 CSV
+venv\Scripts\python scripts\test_false_positive.py                              # 误报率测试
+venv\Scripts\python scripts\test_generalization.py                              # 泛化测试
 ```
 
 ## 架构
 
-（开发中，W1 完成后补充架构图）
+```
+载荷库(YAML 137条) → 变异引擎(4策略) → 批量评测引擎 → 判定器(规则+LLM裁判) → SQLite(runs) → 统计/CSV
+                                          │
+                                          ▼
+                        FastAPI 防护代理 ─ 输入防护(规则/编码还原/相似度)
+                                          └ 输出防护(验证码拦截/PII脱敏)
+                                          │
+                                          ▼
+                                    DeepSeek / 多模型
+```
