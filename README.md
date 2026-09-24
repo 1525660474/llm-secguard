@@ -14,9 +14,19 @@
 - [x] S2 API 调通
 - [x] S3 数据库设计
 - [x] S4 载荷库 v1（6 类 137 条）
-- [ ] S5 规则判定器
-- [ ] S6 单链路 runner
-- [ ] S7 README / 首次推送
+- [x] S5 规则判定器
+- [x] S6 单链路 runner
+- [x] S7 README / 首次推送
+
+## 首批测试结果（18 次真实运行）
+
+| 类别 | 测试数 | 攻破 | 守住 | 典型发现 |
+|---|---|---|---|---|
+| direct_injection | 10 | 0 | 10 | 基础指令覆盖均被拒绝 |
+| sensitive_info | 3 | 0 | 3 | 拒绝泄露虚构 PII |
+| unsafe_output | 5 | 3 | 2 | 直接输出 `onclick=` / `javascript:` / `document.cookie` 等危险代码 |
+
+> 数据持续更新中，运行 `scripts/stats.py` 可复现统计口径。
 
 ## 快速开始
 
@@ -32,6 +42,13 @@ venv\Scripts\python scripts\test_api.py
 
 # 4. 初始化数据库
 venv\Scripts\python scripts\init_db.py
+
+# 5. 导入载荷库
+venv\Scripts\python scripts\import_payloads.py
+
+# 6. 运行单链路测试并查看统计
+venv\Scripts\python scripts\run_once.py --limit 10
+venv\Scripts\python scripts\stats.py
 ```
 
 ## 架构
