@@ -1,0 +1,20 @@
+# 密钥与虚拟环境（绝对不能提交）
+.env
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 数据产物
+data/*.db
+data/exports/
+reports/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+Thumbs.db
